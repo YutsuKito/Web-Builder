@@ -45,23 +45,26 @@ function toKebabCase(str: string): string {
 }
 
 function gerarBodyHTML(componentes: Componente[]): string {
-  const componentesHtml = componentes.map((componente) => {
+  const renderComponenteHtml = (componente: Componente): string => {
     const hasteClass = `${componente.tipo}-${componente.id}`;
     const temLink = !!componente.link;
     const url = formatarUrl(componente.link || '');
-    
+    const filhos = componentes.filter(c => c.parentId === componente.id);
+
+    // Pegamos os estilos do desktop como base para o HTML semanticamente
+    const estilosBase = componente.breakpoints?.desktop?.estilos || {};
+
     // Se tem link, a classe de posicionamento e dimensões vai para o <a>
     const targetClasse = temLink ? '' : ` class="${hasteClass}"`;
-    
+
     // Conteúdo interno do elemento
     let conteudoHtml = '';
     let isFlex = false;
-    
+
     if (componente.tipo === 'button') {
-      const iconName = componente.estilos.iconName;
-      const iconPosition = componente.estilos.iconPosition || 'left';
+      const iconName = estilosBase.iconName;
+      const iconPosition = estilosBase.iconPosition || 'left';
       const iconTag = iconName ? `<i data-lucide="${toKebabCase(iconName)}" style="width: 1.2em; height: 1.2em;"></i>` : '';
-      
       const text = componente.conteudoTextual || '';
       conteudoHtml = iconPosition === 'left' ? `${iconTag} ${text}` : `${text} ${iconTag}`;
       conteudoHtml = conteudoHtml.trim();
@@ -70,20 +73,32 @@ function gerarBodyHTML(componentes: Componente[]): string {
       if (!temLink) {
         return `  <button class="${hasteClass}">${conteudoHtml}</button>`;
       }
-    } 
-    
-    if (componente.tipo === 'image') {
+    } else if (componente.tipo === 'image') {
       const src = componente.src || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop';
       const alt = componente.alt || '';
-      conteudoHtml = `<img src="${src}" alt="${alt}"${targetClasse} style="width: 100%; height: 100%; object-fit: cover; display: block;" />`;
+      // Div com a classe CSS (define position/width/height) + img preenche a div
+      if (temLink) {
+        const target = componente.linkTarget === '_blank' ? ' target="_blank" rel="noopener noreferrer"' : '';
+        return `  <a href="${url}" class="${hasteClass}"${target} style="display: block; cursor: pointer; overflow: hidden;">\n    <img src="${src}" alt="${alt}" style="width: 100%; height: 100%; object-fit: cover; display: block;" />\n  </a>`;
+      }
+      return `  <div class="${hasteClass}" style="overflow: hidden;">\n    <img src="${src}" alt="${alt}" style="width: 100%; height: 100%; object-fit: cover; display: block;" />\n  </div>`;
     } else if (componente.tipo === 'text') {
       conteudoHtml = `<p${targetClasse} style="margin: 0; width: 100%; height: 100%;">${componente.conteudoTextual || 'Texto'}</p>`;
     } else if (componente.tipo === 'icon') {
       const iconName = toKebabCase(componente.conteudoTextual || 'help-circle');
-      // Usa o fontSize do editor como tamanho real do ícone (igual ao preview)
-      const iconSize = parseInt(String(componente.estilos.fontSize || '48')) || 48;
+      const iconSize = parseInt(String(estilosBase.fontSize || '48')) || 48;
       conteudoHtml = `<i data-lucide="${iconName}"${targetClasse} style="width: ${iconSize}px; height: ${iconSize}px; display: block; pointer-events: none;"></i>`;
       isFlex = true;
+    } else if (componente.tipo === 'container') {
+      const childrenHtml = filhos.map(f => renderComponenteHtml(f)).join('\n');
+      // Container usa a classe CSS diretamente — o CSS gerado já inclui position, background, etc.
+      // NÃO colocar position: relative inline — isso sobrescreve o CSS position: absolute!
+      // position: absolute já cria contexto de posicionamento para filhos.
+      if (temLink) {
+        const target = componente.linkTarget === '_blank' ? ' target="_blank" rel="noopener noreferrer"' : '';
+        return `  <a href="${url}" class="${hasteClass}"${target} style="display: block; cursor: pointer; overflow: hidden;">\n${childrenHtml}\n  </a>`;
+      }
+      return `  <div class="${hasteClass}" style="overflow: hidden;">\n${childrenHtml}\n  </div>`;
     } else {
       const pointerStyle = temLink ? '' : ' style="pointer-events: none;"';
       conteudoHtml = `<div${targetClasse}${pointerStyle}>${componente.conteudoTextual || ''}</div>`;
@@ -96,10 +111,12 @@ function gerarBodyHTML(componentes: Componente[]): string {
     }
 
     return `  ${conteudoHtml}`;
-  });
+  };
 
-  return componentesHtml.join('\n');
+  const rootComponentes = componentes.filter(c => !c.parentId);
+  return rootComponentes.map(renderComponenteHtml).join('\n');
 }
+
 
 /**
  * Monta o documento HTML completo com CSS embutido e os elementos.
@@ -139,6 +156,7 @@ body {
   position: relative;
   width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 a {
@@ -198,7 +216,7 @@ export default function ModalExportacao({ isOpen, onClose }: ModalExportacaoProp
       if (elementos.length === 0) {
         throw new Error('Adicione pelo menos um elemento ao canvas para exportar.');
       }
-      
+
       const { viewport } = useEditorStore.getState();
       const larguraReferencia = viewport === 'mobile' ? 375 : viewport === 'tablet' ? 768 : 1024;
 
@@ -210,7 +228,7 @@ export default function ModalExportacao({ isOpen, onClose }: ModalExportacaoProp
         return (a.zIndex || 0) - (b.zIndex || 0);
       });
 
-      const resultadoCSS = gerarCodigoCSS(elementosExportacao, larguraReferencia);
+      const resultadoCSS = gerarCodigoCSS(elementosExportacao);
       const innerHtml = gerarBodyHTML(elementosExportacao);
       const htmlCompleto = comporDocumentoHTMLCompleto(innerHtml, resultadoCSS.codigo);
 
@@ -245,7 +263,7 @@ export default function ModalExportacao({ isOpen, onClose }: ModalExportacaoProp
 
   const fazerDownloadHtml = useCallback(() => {
     if (!codigoGerado.html) return;
-    
+
     const blob = new Blob([codigoGerado.html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -253,7 +271,7 @@ export default function ModalExportacao({ isOpen, onClose }: ModalExportacaoProp
     a.download = `ui-exportada-${Date.now()}.html`;
     document.body.appendChild(a);
     a.click();
-    
+
     // Cleanup
     setTimeout(() => {
       document.body.removeChild(a);
@@ -335,9 +353,9 @@ export default function ModalExportacao({ isOpen, onClose }: ModalExportacaoProp
                 rows={10}
               />
             </div>
-            
-             {/* ── CSS ──────────────────────────────────────────────────────── */}
-             <div style={estilos.secao}>
+
+            {/* ── CSS ──────────────────────────────────────────────────────── */}
+            <div style={estilos.secao}>
               <div style={estilos.secaoHeader}>
                 <label style={estilos.label}>Apenas CSS Gerado</label>
                 <button

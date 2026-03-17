@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useRef, useState } from 'react';
-import { useEditorStore } from '../store/useEditorStore';
+import { useEditorStore, getResolvedElementData, getAbsolutePosition } from '../store/useEditorStore';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -118,6 +118,7 @@ export function SelectionMarquee({ artboardRef }: SelectionMarqueeProps) {
       return;
     }
 
+    const state = useEditorStore.getState();
     isDrawing.current = false;
 
     const selectionRect = normalizarMarquee(marquee);
@@ -125,12 +126,15 @@ export function SelectionMarquee({ artboardRef }: SelectionMarqueeProps) {
     if (selectionRect.width > 5 && selectionRect.height > 5) {
       const idsColididos: string[] = [];
 
-      for (const el of elementos) {
+      for (const el of state.elementos) {
+        const res = getResolvedElementData(el, state.viewport);
+        const absPos = getAbsolutePosition(el, state.elementos, state.viewport);
+
         const elRect: Rect = {
-          x: el.x,
-          y: el.y,
-          width: typeof el.width === 'number' ? el.width : parseFloat(el.width) || 0,
-          height: typeof el.height === 'number' ? el.height : parseFloat(el.height) || 0,
+          x: absPos.x,
+          y: absPos.y,
+          width: typeof res.width === 'number' ? res.width : parseFloat(String(res.width)) || 0,
+          height: typeof res.height === 'number' ? res.height : parseFloat(String(res.height)) || 0,
         };
 
         if (retangulosColidem(selectionRect, elRect)) {
@@ -139,15 +143,13 @@ export function SelectionMarquee({ artboardRef }: SelectionMarqueeProps) {
       }
 
       if (idsColididos.length > 0) {
-        setSelection(idsColididos);
+        state.setSelection(idsColididos);
       } else if (!e?.shiftKey) {
-        // Se desenhou mas não pegou ninguém, e não tá com shift, limpa
-        clearSelection();
+        state.clearSelection();
       }
     } else {
-       // Se o rect foi muito pequeno (foi só um click), limpa a seleção
        if (!e?.shiftKey) {
-         clearSelection();
+         state.clearSelection();
        }
     }
 

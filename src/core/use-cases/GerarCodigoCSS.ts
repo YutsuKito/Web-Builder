@@ -74,64 +74,151 @@ function formatarDeclaracoes(estilos: EstilosCSS): string[] {
  * @param larguraReferencia - A largura do canvas no momento da edição (default 1024).
  * @returns `ResultadoCSS` com o código gerado e o seletor utilizado.
  */
-export function gerarCodigoCSS(componentes: Componente[], larguraReferencia: number = 1024): ResultadoCSS {
+export function gerarCodigoCSS(componentes: Componente[]): ResultadoCSS {
   if (!componentes || componentes.length === 0) {
     throw new Error('Nenhum componente fornecido para gerar CSS.');
   }
 
   const blocosCSS: string[] = [];
+  const blocosTablet: string[] = [];
+  const blocosMobile: string[] = [];
   const seletoresUsados: string[] = [];
 
-  for (const componente of componentes) {
-    const { id, tipo, estilos, x, y, width, height, zIndex } = componente;
+  const desktopWidth = 1024;
+  const desktopHeight = 800;
+  const tabletWidth = 768;
+  const mobileWidth = 375;
 
-    // Constrói as declarações baseadas nos estilos do editor
-    const declaracoes = formatarDeclaracoes(estilos);
+  const gerarDeclaracoesParaViewport = (
+    componente: Componente, 
+    viewport: 'desktop' | 'tablet' | 'mobile',
+    larguraCanvas: number,
+    baseResolved?: any // Dados resolvidos do desktop para comparação (delta)
+  ) => {
+    const { id, tipo, zIndex } = componente;
+    const resolved = {
+      x: componente.breakpoints[viewport]?.x,
+      y: componente.breakpoints[viewport]?.y,
+      width: componente.breakpoints[viewport]?.width,
+      height: componente.breakpoints[viewport]?.height,
+      dockX: componente.breakpoints[viewport]?.dockX,
+      dockY: componente.breakpoints[viewport]?.dockY,
+      estilos: componente.breakpoints[viewport]?.estilos || {},
+    };
 
-    // ─── Posicionamento Absoluto (pixel-perfect) ───
-    // Usamos os valores EXATOS de X e Y do react-rnd.
-    // Funciona porque os elementos ficam dentro de .canvas-wrapper
-    // que tem position: relative e a mesma largura do canvas do editor.
-    declaracoes.push(`  position: absolute;`);
-    declaracoes.push(`  left: ${x}px;`);
-    declaracoes.push(`  top: ${y}px;`);
-    
-    // Gerenciamento de Camadas
-    const zBase = tipo === 'container' ? 0 : 1000;
-    const finalZIndex = (zIndex !== undefined ? zIndex : 0) + zBase;
-    declaracoes.push(`  z-index: ${finalZIndex};`);
-    
-    // Width e Height (valores diretos em pixel)
-    if (width !== undefined && width !== 'auto') {
-      declaracoes.push(`  width: ${typeof width === 'number' ? `${width}px` : width.toString().trim()};`);
-    }
-    if (height !== undefined && height !== 'auto') {
-      declaracoes.push(`  height: ${typeof height === 'number' ? `${height}px` : height};`);
-    }
+    // No desktop (base), pegamos tudo. 
+    // No tablet/mobile, pegamos apenas o que foi explicitamente definido (overwrite)
+    const declaracoes: string[] = [];
 
-    // Suporte para Flexbox em botões e ícones
-    if ((tipo === 'button' || tipo === 'icon') && !estilos.display) {
-      declaracoes.push('  display: flex;');
-      declaracoes.push('  align-items: center;');
-      declaracoes.push('  justify-content: center;');
-      if (tipo === 'button' && estilos.iconName && !estilos.gap) {
-        declaracoes.push('  gap: 8px;');
+    // Lógica de Posicionamento e Dimensões
+    const processarLayout = (data: any, isBase: boolean) => {
+      const layoutProps: string[] = [];
+      const { x, y, width, height, dockX, dockY } = data;
+
+      // Só adiciona se for base ou se o valor for diferente do base
+      if (isBase || x !== undefined || y !== undefined || dockX !== undefined || dockY !== undefined) {
+        const finalX = x ?? (isBase ? 0 : baseResolved.x);
+        const finalY = y ?? (isBase ? 0 : baseResolved.y);
+        const finalDockX = dockX ?? (isBase ? 'left' : baseResolved.dockX);
+        const finalDockY = dockY ?? (isBase ? 'top' : baseResolved.dockY);
+
+        // Resolvemos dimensões para cálculos de docking
+        const wVal = width ?? (isBase ? 100 : baseResolved.width);
+        const hVal = height ?? (isBase ? 100 : baseResolved.height);
+        const wNum = typeof wVal === 'number' ? wVal : parseFloat(String(wVal)) || 0;
+        const hNum = typeof hVal === 'number' ? hVal : parseFloat(String(hVal)) || 0;
+
+        layoutProps.push(`  position: absolute;`);
+
+        if (finalDockX === 'right') {
+          layoutProps.push(`  right: ${larguraCanvas - (finalX + wNum)}px;`);
+          layoutProps.push(`  left: auto;`);
+        } else if (finalDockX === 'center') {
+          layoutProps.push(`  left: 50%;`);
+          layoutProps.push(`  transform: translateX(-50%);`);
+        } else {
+          layoutProps.push(`  left: ${finalX}px;`);
+          layoutProps.push(`  right: auto;`);
+        }
+
+        // Vertical: sempre usa top com posição exata do canvas
+        // (garante que distâncias fiquem iguais ao preview independente da viewport)
+        layoutProps.push(`  top: ${finalY}px;`);
+        layoutProps.push(`  bottom: auto;`);
+      }
+
+
+      if (isBase || width !== undefined) {
+        const wVal = width ?? (isBase ? 100 : baseResolved.width);
+        layoutProps.push(`  width: ${typeof wVal === 'number' ? `${wVal}px` : wVal};`);
+      }
+
+      if (isBase || height !== undefined) {
+        const hVal = height ?? (isBase ? 100 : baseResolved.height);
+        layoutProps.push(`  height: ${typeof hVal === 'number' ? `${hVal}px` : hVal};`);
+      }
+
+      return layoutProps;
+    };
+
+    if (viewport === 'desktop') {
+      declaracoes.push(...processarLayout(resolved, true));
+      declaracoes.push(...formatarDeclaracoes(resolved.estilos));
+      
+      const zBase = tipo === 'container' ? 0 : 1000;
+      declaracoes.push(`  z-index: ${zIndex + zBase};`);
+    } else {
+      // Overwrites para Tablet/Mobile
+      declaracoes.push(...processarLayout(resolved, false));
+      if (Object.keys(resolved.estilos).length > 0) {
+        declaracoes.push(...formatarDeclaracoes(resolved.estilos));
       }
     }
 
-    const seletor = `.${tipo}-${id}`;
+    return declaracoes;
+  };
+
+  for (const componente of componentes) {
+    const seletor = `.${componente.tipo}-${componente.id}`;
     seletoresUsados.push(seletor);
 
-    const codigoBloco = [
-      `${seletor} {`,
-      ...declaracoes,
-      `}`,
-    ].join('\n');
+    // 1. Desktop (Base)
+    const baseDeclaracoes = gerarDeclaracoesParaViewport(componente, 'desktop', desktopWidth);
+    blocosCSS.push(`${seletor} {\n${baseDeclaracoes.join('\n')}\n}`);
 
-    blocosCSS.push(codigoBloco);
+    const baseResolved = {
+      x: componente.breakpoints.desktop.x,
+      y: componente.breakpoints.desktop.y,
+      width: componente.breakpoints.desktop.width,
+      height: componente.breakpoints.desktop.height,
+      dockX: componente.breakpoints.desktop.dockX,
+      dockY: componente.breakpoints.desktop.dockY,
+    };
+
+    // 2. Tablet Overwrites
+    const tabletDeclaracoes = gerarDeclaracoesParaViewport(componente, 'tablet', tabletWidth, baseResolved);
+    if (tabletDeclaracoes.length > 0) {
+      blocosTablet.push(`${seletor} {\n${tabletDeclaracoes.join('\n')}\n}`);
+    }
+
+    // 3. Mobile Overwrites
+    const mobileDeclaracoes = gerarDeclaracoesParaViewport(componente, 'mobile', mobileWidth, baseResolved);
+    if (mobileDeclaracoes.length > 0) {
+      blocosMobile.push(`${seletor} {\n${mobileDeclaracoes.join('\n')}\n}`);
+    }
   }
 
-  const codigoConsolidado = blocosCSS.join('\n\n');
+  let codigoFinal = blocosCSS.join('\n\n');
 
-  return { codigo: codigoConsolidado, seletor: seletoresUsados.join(', ') };
+  if (blocosTablet.length > 0) {
+    codigoFinal += `\n\n@media (max-width: 768px) {\n${blocosTablet.join('\n\n')}\n}`;
+  }
+
+  if (blocosMobile.length > 0) {
+    codigoFinal += `\n\n@media (max-width: 480px) {\n${blocosMobile.join('\n\n')}\n}`;
+  }
+
+  return { codigo: codigoFinal, seletor: seletoresUsados.join(', ') };
 }
+
+

@@ -13,16 +13,6 @@ export type TipoComponente =
 
 /**
  * Representa um par chave-valor de propriedades CSS.
- *
- * As chaves devem seguir o formato camelCase do JS (ex: `backgroundColor`)
- * e serão convertidas para kebab-case na geração do código CSS.
- *
- * @example
- * const estilos: EstilosCSS = {
- *   backgroundColor: '#3b82f6',
- *   borderRadius: '8px',
- *   fontSize: '16px',
- * };
  */
 export type EstilosCSS = {
   opacity?: number;
@@ -36,12 +26,21 @@ export type EstilosCSS = {
   iconPosition?: 'left' | 'right';
 } & Record<string, any>;
 
+export type Viewport = 'desktop' | 'tablet' | 'mobile';
+
+
+export interface BreakpointData {
+  x?: number;
+  y?: number;
+  width?: number | string;
+  height?: number | string;
+  estilos?: EstilosCSS;
+  dockX?: 'left' | 'center' | 'right';
+  dockY?: 'top' | 'center' | 'bottom';
+}
+
 /**
  * Entidade central do domínio que representa um elemento genérico de UI.
- *
- * Cada componente possui um identificador único, um tipo que determina
- * a semântica do elemento, um mapa de estilos CSS e um conteúdo textual
- * opcional exibido dentro do elemento.
  */
 export interface Componente {
   /** Identificador único do componente (UUID). */
@@ -50,8 +49,8 @@ export interface Componente {
   /** Tipo semântico do elemento (ex: 'button', 'gradient'). */
   readonly tipo: TipoComponente;
 
-  /** Mapa de propriedades CSS aplicadas ao componente. */
-  readonly estilos: EstilosCSS;
+  /** Dados e estilos mapeados por viewport. */
+  readonly breakpoints: Record<Viewport, BreakpointData>;
 
   /** Texto exibido dentro do componente (pode ser vazio). */
   readonly conteudoTextual: string;
@@ -59,15 +58,9 @@ export interface Componente {
   /** Nome customizado exibido no painel de camadas */
   readonly nomeCamada?: string;
 
-  /** Propriedades espaciais (Drag & Drop) */
-  readonly x: number;
-  readonly y: number;
+  /** Ordem de empilhamento (comum a todos os breakpoints por simplicidade inicial) */
   readonly zIndex: number;
   
-  /** Dimensões (Resize) */
-  readonly width: number | string;
-  readonly height: number | string;
-
   /** Propriedades específicas para imagens ('image') */
   readonly src?: string;
   readonly alt?: string;
@@ -75,7 +68,11 @@ export interface Componente {
   /** IDs dos elementos filhos caso seja um 'container' */
   readonly childrenIds?: string[];
 
+  /** ID do elemento pai (opcional) */
+  readonly parentId?: string;
+
   /** Propriedades de link (comum a todos os elementos) */
   readonly link?: string;
   readonly linkTarget?: '_blank' | '_self';
 }
+

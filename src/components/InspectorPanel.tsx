@@ -1,14 +1,21 @@
 'use client';
 
 import React from 'react';
-import { useEditorStore } from '../store/useEditorStore';
+import { useEditorStore, getResolvedElementData } from '../store/useEditorStore';
 import { POPULAR_ICONS } from './IconSidebar';
+import { getComputedStyles } from '../utils/styleHelpers';
+
 
 export function InspectorPanel() {
-  const { elementos, elementosSelecionadosIds, atualizarEstiloElemento, atualizarElemento } = useEditorStore();
+  const { elementos, elementosSelecionadosIds, atualizarEstiloElemento, atualizarElemento, atualizarBreakpointData } = useEditorStore();
 
   const elementoSelecionadoId = elementosSelecionadosIds.length > 0 ? elementosSelecionadosIds[0] : null;
   const elemento = elementos.find((el) => el.id === elementoSelecionadoId);
+  const viewport = useEditorStore((s) => s.viewport);
+  
+  // Resolve os dados e estilos com base na herança
+  const resolved = elemento ? getResolvedElementData(elemento, viewport) : null;
+  const estilosAtivos = resolved?.estilos || {};
 
   // Multi-seleção: mostra apenas uma mensagem informativa
   if (elementosSelecionadosIds.length > 1) {
@@ -25,7 +32,7 @@ export function InspectorPanel() {
     );
   }
 
-  if (!elemento) {
+  if (!elemento || !resolved) {
     return (
       <div className="w-80 h-full bg-slate-50 border-l border-slate-200 flex flex-col items-center justify-center text-slate-400">
         <div className="text-center p-6 bg-white rounded-xl shadow-sm border border-slate-100">
@@ -43,7 +50,11 @@ export function InspectorPanel() {
     atualizarEstiloElemento(elemento.id, prop, value);
   };
 
-  const handlePropChange = (prop: string, value: any) => {
+  const handleBreakpointPropChange = (prop: string, value: any) => {
+    atualizarBreakpointData(elemento.id, { [prop]: value });
+  };
+
+  const handleUniversalPropChange = (prop: string, value: any) => {
     atualizarElemento(elemento.id, { [prop]: value });
   };
 
@@ -57,40 +68,79 @@ export function InspectorPanel() {
           </h2>
           <span className="text-[10px] bg-slate-200 text-slate-500 px-2 py-1 rounded-md font-mono">{elemento.id.split('-')[1] || elemento.id}</span>
         </div>
+        <div className="mt-2 text-[10px] font-bold text-blue-600 flex items-center gap-1 uppercase bg-blue-50 w-fit px-2 py-0.5 rounded border border-blue-100">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          Editando: {viewport}
+        </div>
       </div>
 
       <div className="p-5 space-y-8">
         {/* Seção Universal: Dimensões e Posição */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            Layout
+            Layout ({viewport})
             <hr className="flex-1 border-slate-200" />
           </h3>
+          
+          {/* Seleção de Pai (Nesting) */}
+          <div className="space-y-1.5 pb-2">
+            <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+              </svg>
+              Elemento Pai
+            </label>
+            <select
+              value={elemento.parentId || ''}
+              onChange={(e) => {
+                const newParentId = e.target.value || null;
+                const { vincularElementoPai } = useEditorStore.getState();
+                vincularElementoPai(elemento.id, newParentId);
+              }}
+              className="w-full text-xs px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/20"
+            >
+              <option value="">Nenhum (Raiz)</option>
+              {elementos
+                .filter(el => el.tipo === 'container' && el.id !== elemento.id && el.parentId !== elemento.id)
+                .map(container => (
+                  <option key={container.id} value={container.id}>
+                    {container.nomeCamada || `${container.tipo}-${container.id.split('-')[1]}`}
+                  </option>
+                ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-            {/* Largura */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-500 uppercase">Largura</label>
               <div className="relative">
                 <input
                   type="text"
-                  value={elemento.width}
-                  onChange={(e) => handlePropChange('width', isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value))}
+                  value={resolved.width}
+                  placeholder="ex: 200, 50%, auto"
+                  onChange={(e) => handleBreakpointPropChange('width', isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value))}
                   className="w-full text-sm px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/20"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono pointer-events-none">PX</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono pointer-events-none">
+                  {String(resolved.width).includes('%') ? '%' : String(resolved.width) === 'auto' ? '' : 'PX'}
+                </span>
               </div>
             </div>
-            {/* Altura */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-500 uppercase">Altura</label>
               <div className="relative">
                 <input
                   type="text"
-                  value={elemento.height}
-                  onChange={(e) => handlePropChange('height', isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value))}
+                  value={resolved.height}
+                  placeholder="ex: 100, 50%, auto"
+                  onChange={(e) => handleBreakpointPropChange('height', isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value))}
                   className="w-full text-sm px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/20"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono pointer-events-none">PX</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono pointer-events-none">
+                  {String(resolved.height).includes('%') ? '%' : String(resolved.height) === 'auto' ? '' : 'PX'}
+                </span>
               </div>
             </div>
             {/* X */}
@@ -99,8 +149,11 @@ export function InspectorPanel() {
               <div className="relative">
                 <input
                   type="number"
-                  value={Math.round(elemento.x)}
-                  onChange={(e) => handlePropChange('x', parseFloat(e.target.value) || 0)}
+                  value={Math.round(resolved.x)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) handleBreakpointPropChange('x', val);
+                  }}
                   className="w-full text-sm px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/20"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono pointer-events-none">PX</span>
@@ -112,8 +165,11 @@ export function InspectorPanel() {
               <div className="relative">
                 <input
                   type="number"
-                  value={Math.round(elemento.y)}
-                  onChange={(e) => handlePropChange('y', parseFloat(e.target.value) || 0)}
+                  value={Math.round(resolved.y)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) handleBreakpointPropChange('y', val);
+                  }}
                   className="w-full text-sm px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/20"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono pointer-events-none">PX</span>
@@ -121,6 +177,46 @@ export function InspectorPanel() {
             </div>
           </div>
         </div>
+
+        {/* Seção de Ancoragem (Docking) */}
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+            Ancoragem ({viewport})
+            <hr className="flex-1 border-slate-200" />
+          </h3>
+          <div className="flex flex-col items-center">
+            <div className="grid grid-cols-3 gap-1 p-2 bg-slate-100 rounded-xl border border-slate-200">
+              {[
+                { y: 'top', x: 'left' }, { y: 'top', x: 'center' }, { y: 'top', x: 'right' },
+                { y: 'center', x: 'left' }, { y: 'center', x: 'center' }, { y: 'center', x: 'right' },
+                { y: 'bottom', x: 'left' }, { y: 'bottom', x: 'center' }, { y: 'bottom', x: 'right' }
+              ].map((dock, i) => {
+                const isActive = (resolved.dockX || 'left') === dock.x && (resolved.dockY || 'top') === dock.y;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      handleBreakpointPropChange('dockX', dock.x);
+                      handleBreakpointPropChange('dockY', dock.y);
+                    }}
+                    className={`w-8 h-8 rounded-md border transition-all flex items-center justify-center ${
+                      isActive 
+                        ? 'bg-blue-500 border-blue-600 text-white shadow-sm' 
+                        : 'bg-white border-slate-200 text-slate-400 hover:border-blue-300 hover:text-blue-500'
+                    }`}
+                    title={`${dock.y} ${dock.x}`}
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-current'}`} />
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2 text-center px-4">
+              Determina como o elemento se comporta em telas maiores.
+            </p>
+          </div>
+        </div>
+
         {(elemento.tipo === 'button' || elemento.tipo === 'container') && (
           <>
             {/* Seção de Conteúdo (Só para Botão por enquanto) */}
@@ -135,7 +231,7 @@ export function InspectorPanel() {
                   <input
                     type="text"
                     value={elemento.conteudoTextual || ''}
-                    onChange={(e) => handlePropChange('conteudoTextual', e.target.value)}
+                    onChange={(e) => handleUniversalPropChange('conteudoTextual', e.target.value)}
                     placeholder="Ex: Clique Aqui"
                     className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-sm"
                   />
@@ -155,7 +251,7 @@ export function InspectorPanel() {
                 <label className="text-xs font-semibold text-slate-600 flex justify-between items-center">
                   <span>Opacidade</span>
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                    {Math.round((elemento.estilos.opacity ?? 1) * 100)}%
+                    {Math.round((estilosAtivos.opacity ?? 1) * 100)}%
                   </span>
                 </label>
                 <input
@@ -163,7 +259,7 @@ export function InspectorPanel() {
                   min="0"
                   max="100"
                   step="1"
-                  value={Math.round((elemento.estilos.opacity ?? 1) * 100)}
+                  value={Math.round((estilosAtivos.opacity ?? 1) * 100)}
                   onChange={(e) => handleStyleChange('opacity', parseFloat(e.target.value) / 100)}
                   className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-600"
                 />
@@ -175,37 +271,38 @@ export function InspectorPanel() {
                 <div className="flex p-1 bg-slate-100 rounded-lg mb-3">
                   <button
                     onClick={() => handleStyleChange('isGradient', false)}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${!elemento.estilos.isGradient ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${!estilosAtivos.isGradient ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Sólido
                   </button>
                   <button
                     onClick={() => handleStyleChange('isGradient', true)}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${elemento.estilos.isGradient ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${estilosAtivos.isGradient ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     Gradiente
                   </button>
                 </div>
 
-                {!elemento.estilos.isGradient ? (
+                {!estilosAtivos.isGradient ? (
                   <div className="space-y-2">
                     <div className="flex gap-2 items-center">
                       <div className="relative">
                         <input
                           type="color"
-                          value={elemento.estilos.backgroundColor || '#3b82f6'}
+                          value={estilosAtivos.backgroundColor?.startsWith('#') ? estilosAtivos.backgroundColor : '#3b82f6'}
                           onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
                           className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                         />
                         <div 
                           className="h-10 w-12 rounded-lg border border-slate-300 shadow-sm cursor-pointer hover:border-blue-400 transition-colors"
-                          style={{ backgroundColor: elemento.estilos.backgroundColor || '#3b82f6' }}
+                          style={{ backgroundColor: estilosAtivos.backgroundColor || '#3b82f6' }}
                         />
                       </div>
                       <input
                         type="text"
-                        value={elemento.estilos.backgroundColor || '#3b82f6'}
+                        value={estilosAtivos.backgroundColor || ''}
                         onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
+                        placeholder="Ex: #3b82f6"
                         className="flex-1 text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-sm font-mono uppercase"
                       />
                     </div>
@@ -218,7 +315,7 @@ export function InspectorPanel() {
                         <div className="flex items-center gap-2">
                           <input
                             type="color"
-                            value={elemento.estilos.gradientColor1 || '#3b82f6'}
+                            value={estilosAtivos.gradientColor1?.startsWith('#') ? estilosAtivos.gradientColor1 : '#3b82f6'}
                             onChange={(e) => handleStyleChange('gradientColor1', e.target.value)}
                             className="w-full h-8 rounded border border-slate-300 cursor-pointer"
                           />
@@ -229,7 +326,7 @@ export function InspectorPanel() {
                         <div className="flex items-center gap-2">
                           <input
                             type="color"
-                            value={elemento.estilos.gradientColor2 || '#9333ea'}
+                            value={estilosAtivos.gradientColor2?.startsWith('#') ? estilosAtivos.gradientColor2 : '#9333ea'}
                             onChange={(e) => handleStyleChange('gradientColor2', e.target.value)}
                             className="w-full h-8 rounded border border-slate-300 cursor-pointer"
                           />
@@ -240,14 +337,14 @@ export function InspectorPanel() {
                       <label className="text-xs font-semibold text-slate-600 flex justify-between items-center">
                         <span>Ângulo</span>
                         <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                          {elemento.estilos.gradientAngle ?? 90}°
+                          {estilosAtivos.gradientAngle ?? 90}°
                         </span>
                       </label>
                       <input
                         type="range"
                         min="0"
                         max="360"
-                        value={elemento.estilos.gradientAngle ?? 90}
+                        value={estilosAtivos.gradientAngle ?? 90}
                         onChange={(e) => handleStyleChange('gradientAngle', parseInt(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-600"
                       />
@@ -264,19 +361,20 @@ export function InspectorPanel() {
                     <div className="relative">
                       <input
                         type="color"
-                        value={elemento.estilos.color || '#ffffff'}
+                        value={estilosAtivos.color?.startsWith('#') ? estilosAtivos.color : '#ffffff'}
                         onChange={(e) => handleStyleChange('color', e.target.value)}
                         className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                       />
                       <div 
                         className="h-10 w-12 rounded-lg border border-slate-300 shadow-sm cursor-pointer hover:border-blue-400 transition-colors"
-                        style={{ backgroundColor: elemento.estilos.color || '#ffffff' }}
+                        style={{ backgroundColor: estilosAtivos.color || '#ffffff' }}
                       />
                     </div>
                     <input
                       type="text"
-                      value={elemento.estilos.color || '#ffffff'}
+                      value={estilosAtivos.color || ''}
                       onChange={(e) => handleStyleChange('color', e.target.value)}
+                      placeholder="Ex: #ffffff"
                       className="flex-1 text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-sm font-mono uppercase"
                     />
                   </div>
@@ -299,12 +397,12 @@ export function InspectorPanel() {
                     type="range"
                     min="0"
                     max="100"
-                    value={elemento.estilos.borderRadius === '50%' ? 100 : parseInt(elemento.estilos.borderRadius || '0')}
+                    value={estilosAtivos.borderRadius === '50%' ? 100 : parseInt(estilosAtivos.borderRadius || '0')}
                     onChange={(e) => handleStyleChange('borderRadius', `${e.target.value}px`)}
                     className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-600"
                   />
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 min-w-[32px] text-center">
-                    {elemento.estilos.borderRadius || '0px'}
+                    {estilosAtivos.borderRadius || '0px'}
                   </span>
                 </div>
               </div>
@@ -315,7 +413,7 @@ export function InspectorPanel() {
                   <label className="text-xs font-semibold text-slate-600 block">Borda (CSS)</label>
                   <input
                     type="text"
-                    value={elemento.estilos.border || ''}
+                    value={estilosAtivos.border || ''}
                     onChange={(e) => handleStyleChange('border', e.target.value)}
                     placeholder="ex: 1px solid #ccc"
                     className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-sm font-mono"
@@ -329,7 +427,7 @@ export function InspectorPanel() {
                   <label className="text-xs font-semibold text-slate-600 block">Padding</label>
                   <input
                     type="text"
-                    value={elemento.estilos.padding || ''}
+                    value={estilosAtivos.padding || ''}
                     onChange={(e) => handleStyleChange('padding', e.target.value)}
                     placeholder="ex: 12px 24px"
                     className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-sm"
@@ -358,7 +456,7 @@ export function InspectorPanel() {
                     if (file) {
                       const reader = new FileReader();
                       reader.onloadend = () => {
-                        handlePropChange('src', reader.result as string);
+                        handleUniversalPropChange('src', reader.result as string);
                       };
                       reader.readAsDataURL(file);
                     }
@@ -372,7 +470,7 @@ export function InspectorPanel() {
                 <input
                   type="text"
                   value={elemento.src || ''}
-                  onChange={(e) => handlePropChange('src', e.target.value)}
+                  onChange={(e) => handleUniversalPropChange('src', e.target.value)}
                   placeholder="https://..."
                   className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
@@ -390,14 +488,14 @@ export function InspectorPanel() {
                 <label className="text-xs font-semibold text-slate-600 flex justify-between items-center">
                   <span>Opacidade</span>
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                    {Math.round((elemento.estilos.opacity ?? 1) * 100)}%
+                    {Math.round((estilosAtivos.opacity ?? 1) * 100)}%
                   </span>
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  value={Math.round((elemento.estilos.opacity ?? 1) * 100)}
+                  value={Math.round((estilosAtivos.opacity ?? 1) * 100)}
                   onChange={(e) => handleStyleChange('opacity', parseFloat(e.target.value) / 100)}
                   className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
@@ -418,12 +516,12 @@ export function InspectorPanel() {
                     type="range"
                     min="0"
                     max="100"
-                    value={elemento.estilos.borderRadius === '50%' ? 100 : parseInt(elemento.estilos.borderRadius || '0')}
+                    value={estilosAtivos.borderRadius === '50%' ? 100 : parseInt(estilosAtivos.borderRadius || '0')}
                     onChange={(e) => handleStyleChange('borderRadius', `${e.target.value}px`)}
                     className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                   />
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 min-w-[32px] text-center">
-                    {elemento.estilos.borderRadius || '0px'}
+                    {estilosAtivos.borderRadius || '0px'}
                   </span>
                 </div>
               </div>
@@ -431,7 +529,7 @@ export function InspectorPanel() {
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-slate-600 block">Object Fit</label>
                 <select
-                  value={elemento.estilos.objectFit || 'cover'}
+                  value={estilosAtivos.objectFit || 'cover'}
                   onChange={(e) => handleStyleChange('objectFit', e.target.value)}
                   className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg"
                 >
@@ -453,7 +551,7 @@ export function InspectorPanel() {
               </h3>
               <textarea
                 value={elemento.conteudoTextual || ''}
-                onChange={(e) => handlePropChange('conteudoTextual', e.target.value)}
+                onChange={(e) => handleUniversalPropChange('conteudoTextual', e.target.value)}
                 className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg min-h-[80px]"
               />
               
@@ -462,14 +560,14 @@ export function InspectorPanel() {
                 <label className="text-xs font-semibold text-slate-600 flex justify-between items-center">
                   <span>Opacidade</span>
                   <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                    {Math.round((elemento.estilos.opacity ?? 1) * 100)}%
+                    {Math.round((estilosAtivos.opacity ?? 1) * 100)}%
                   </span>
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  value={Math.round((elemento.estilos.opacity ?? 1) * 100)}
+                  value={Math.round((estilosAtivos.opacity ?? 1) * 100)}
                   onChange={(e) => handleStyleChange('opacity', parseFloat(e.target.value) / 100)}
                   className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
@@ -487,7 +585,7 @@ export function InspectorPanel() {
                   <label className="text-xs font-semibold text-slate-600">Tam.</label>
                   <input
                     type="number"
-                    value={parseInt(String(elemento.estilos.fontSize) || '24')}
+                    value={parseInt(String(estilosAtivos.fontSize) || '24')}
                     onChange={(e) => handleStyleChange('fontSize', `${e.target.value}px`)}
                     className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg"
                   />
@@ -495,7 +593,7 @@ export function InspectorPanel() {
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-600">Peso</label>
                   <select
-                    value={elemento.estilos.fontWeight || '400'}
+                    value={estilosAtivos.fontWeight || '400'}
                     onChange={(e) => handleStyleChange('fontWeight', e.target.value)}
                     className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg"
                   >
@@ -511,14 +609,15 @@ export function InspectorPanel() {
                 <div className="flex gap-2">
                   <input
                     type="color"
-                    value={elemento.estilos.color || '#333333'}
+                    value={estilosAtivos.color?.startsWith('#') ? estilosAtivos.color : '#333333'}
                     onChange={(e) => handleStyleChange('color', e.target.value)}
                     className="h-10 w-12 rounded border border-slate-300"
                   />
                   <input
                     type="text"
-                    value={elemento.estilos.color || '#333333'}
+                    value={estilosAtivos.color || ''}
                     onChange={(e) => handleStyleChange('color', e.target.value)}
+                    placeholder="Ex: #333333"
                     className="flex-1 text-sm px-3 py-2 border border-slate-300 rounded-lg uppercase"
                   />
                 </div>
@@ -542,19 +641,20 @@ export function InspectorPanel() {
                 <div className="relative">
                   <input
                     type="color"
-                    value={elemento.estilos.color || '#000000'}
+                    value={estilosAtivos.color?.startsWith('#') ? estilosAtivos.color : '#000000'}
                     onChange={(e) => handleStyleChange('color', e.target.value)}
                     className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                   />
                   <div 
                     className="h-10 w-12 rounded-lg border border-slate-300 shadow-sm cursor-pointer hover:border-blue-400 transition-colors"
-                    style={{ backgroundColor: elemento.estilos.color || '#000000' }}
+                    style={{ backgroundColor: estilosAtivos.color || '#000000' }}
                   />
                 </div>
                 <input
                   type="text"
-                  value={elemento.estilos.color || '#000000'}
+                  value={estilosAtivos.color || ''}
                   onChange={(e) => handleStyleChange('color', e.target.value)}
+                  placeholder="Ex: #000000"
                   className="flex-1 text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-sm font-mono uppercase"
                 />
               </div>
@@ -565,7 +665,7 @@ export function InspectorPanel() {
               <label className="text-xs font-semibold text-slate-600 flex justify-between items-center">
                 <span>Tamanho</span>
                 <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                  {parseInt(String(elemento.estilos.fontSize || '48'))}px
+                  {parseInt(String(estilosAtivos.fontSize || '48'))}px
                 </span>
               </label>
               <input
@@ -573,7 +673,7 @@ export function InspectorPanel() {
                 min="12"
                 max="256"
                 step="1"
-                value={parseInt(String(elemento.estilos.fontSize || '48'))}
+                value={parseInt(String(estilosAtivos.fontSize || '48'))}
                 onChange={(e) => handleStyleChange('fontSize', `${e.target.value}px`)}
                 className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-600"
               />
@@ -591,7 +691,7 @@ export function InspectorPanel() {
             <div className="space-y-3">
               <label className="text-xs font-semibold text-slate-600">Escolher Ícone</label>
               <select
-                value={elemento.estilos.iconName || ''}
+                value={estilosAtivos.iconName || ''}
                 onChange={(e) => handleStyleChange('iconName', e.target.value)}
                 className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/50"
               >
@@ -602,14 +702,14 @@ export function InspectorPanel() {
               </select>
             </div>
 
-            {elemento.estilos.iconName && (
+            {estilosAtivos.iconName && (
               <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-600">Posição</label>
                 <div className="flex bg-slate-100 p-1 rounded-lg">
                   <button
                     onClick={() => handleStyleChange('iconPosition', 'left')}
                     className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${
-                      (elemento.estilos.iconPosition || 'left') === 'left'
+                      (estilosAtivos.iconPosition || 'left') === 'left'
                         ? 'bg-white shadow-sm text-blue-600'
                         : 'text-slate-500 hover:text-slate-700'
                     }`}
@@ -619,7 +719,7 @@ export function InspectorPanel() {
                   <button
                     onClick={() => handleStyleChange('iconPosition', 'right')}
                     className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${
-                      elemento.estilos.iconPosition === 'right'
+                      estilosAtivos.iconPosition === 'right'
                         ? 'bg-white shadow-sm text-blue-600'
                         : 'text-slate-500 hover:text-slate-700'
                     }`}
@@ -646,7 +746,7 @@ export function InspectorPanel() {
                 type="text"
                 placeholder="https://exemplo.com"
                 value={elemento.link || ''}
-                onChange={(e) => handlePropChange('link', e.target.value)}
+                onChange={(e) => handleUniversalPropChange('link', e.target.value)}
                 className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500/50"
               />
             </div>
@@ -654,7 +754,7 @@ export function InspectorPanel() {
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-600">Abrir em nova aba</span>
               <button
-                onClick={() => handlePropChange('linkTarget', elemento.linkTarget === '_blank' ? '_self' : '_blank')}
+                onClick={() => handleUniversalPropChange('linkTarget', elemento.linkTarget === '_blank' ? '_self' : '_blank')}
                 className={`w-10 h-5 rounded-full transition-colors relative ${
                   elemento.linkTarget === '_blank' ? 'bg-blue-600' : 'bg-slate-300'
                 }`}

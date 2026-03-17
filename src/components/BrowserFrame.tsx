@@ -1,6 +1,56 @@
 import React from 'react';
+import { Viewport } from '../core/domain/Componente';
 
-export function BrowserFrame({ children }: { children: React.ReactNode }) {
+interface BrowserFrameProps {
+  children: React.ReactNode;
+  viewport?: Viewport;
+}
+
+export function BrowserFrame({ children, viewport = 'desktop' }: BrowserFrameProps) {
+  // Mobile Frame (iOS-inspired)
+  if (viewport === 'mobile') {
+    return (
+      <div className="mx-auto relative border-[8px] border-slate-900 rounded-[3rem] bg-slate-900 shadow-2xl overflow-hidden h-[736px] w-[414px] flex flex-col">
+        {/* Status Bar / Notch */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-900 rounded-b-2xl z-50 flex items-center justify-center">
+          <div className="w-10 h-1 bg-slate-800 rounded-full"></div>
+        </div>
+        
+        {/* Screen Content */}
+        <div className="flex-1 bg-white rounded-[2.2rem] overflow-auto mt-2 relative pointer-events-auto">
+          {children}
+        </div>
+        
+        {/* Home Indicator */}
+        <div className="h-6 w-full flex items-center justify-center bg-slate-900">
+          <div className="w-24 h-1 bg-slate-700 rounded-full"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Tablet Frame
+  if (viewport === 'tablet') {
+    return (
+      <div className="mx-auto relative border-[12px] border-slate-800 rounded-[2rem] bg-slate-800 shadow-2xl overflow-hidden h-[1024px] w-[768px] flex flex-col">
+        {/* Camera Dot */}
+        <div className="h-6 w-full flex items-center justify-center bg-slate-800">
+           <div className="w-2 h-2 rounded-full bg-slate-700"></div>
+        </div>
+
+        {/* Screen Content */}
+        <div className="flex-1 bg-white rounded-[0.5rem] overflow-auto relative pointer-events-auto">
+          {children}
+        </div>
+
+        {/* Bottom Bar */}
+        <div className="h-6 w-full bg-slate-800"></div>
+      </div>
+    );
+  }
+
+
+  // Desktop / Default Frame
   return (
     <div className="w-full flex-1 flex flex-col rounded-xl overflow-hidden shadow-2xl bg-white border border-gray-200">
       {/* Browser Header / Titlebar */}
@@ -40,3 +90,4 @@ export function BrowserFrame({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+

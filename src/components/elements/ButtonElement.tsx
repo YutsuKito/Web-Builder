@@ -3,21 +3,26 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
 import { Componente } from '../../core/domain/Componente';
-import { getValidStyles } from '../../utils/styleHelpers';
+import { getValidStyles, getComputedStyles } from '../../utils/styleHelpers';
+import { useEditorStore } from '../../store/useEditorStore';
 
 interface ButtonElementProps {
   elemento: Componente;
 }
 
 export default function ButtonElement({ elemento }: ButtonElementProps) {
-  const { estilos, conteudoTextual } = elemento;
-  const Icon = estilos.iconName ? (LucideIcons as any)[estilos.iconName] : null;
-  const iconPosition = estilos.iconPosition || 'left';
+  const { viewport } = useEditorStore();
+  const estilos = (elemento as any).estilos || {};
+  const computedStyles = getComputedStyles(estilos, viewport);
+
+  const Icon = computedStyles?.iconName ? (LucideIcons as any)[computedStyles.iconName] : null;
+  const iconPosition = computedStyles?.iconPosition || 'left';
+
 
   return (
     <button
       style={{
-        ...getValidStyles(estilos),
+        ...getValidStyles(computedStyles),
         width: '100%',
         height: '100%',
         margin: 0,
@@ -31,7 +36,7 @@ export default function ButtonElement({ elemento }: ButtonElementProps) {
       disabled
     >
       {Icon && iconPosition === 'left' && <Icon size={18} />}
-      <span className="truncate">{conteudoTextual || ' '}</span>
+      <span className="truncate">{elemento.conteudoTextual || ' '}</span>
       {Icon && iconPosition === 'right' && <Icon size={18} />}
     </button>
   );

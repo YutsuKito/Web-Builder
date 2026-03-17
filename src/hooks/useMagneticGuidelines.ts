@@ -1,5 +1,13 @@
 import { Componente } from '../core/domain/Componente';
 
+export interface SnapElement {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface Guide {
   axis: 'x' | 'y';
   position: number;
@@ -20,9 +28,10 @@ export const useMagneticGuidelines = () => {
     y: number,
     width: number,
     height: number,
-    elements: Componente[],
+    elements: SnapElement[],
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    isNested: boolean = false
   ): SnappedPosition => {
     let snappedX = x;
     let snappedY = y;
@@ -31,24 +40,22 @@ export const useMagneticGuidelines = () => {
     const halfWidth = width / 2;
     const halfHeight = height / 2;
 
-    const currentRight = x + width;
-    const currentBottom = y + height;
-    const currentCenterX = x + halfWidth;
-    const currentCenterY = y + halfHeight;
+    // --- Pontos de Snap Verticais (X) ---
+    const vSnapPoints: { pos: number; guide: number }[] = [];
 
-    // --- Vertical Guides (Snap X) ---
-    const vSnapPoints = [
-      { pos: 0, guide: 0 }, // Left edge of canvas
-      { pos: canvasWidth / 2 - halfWidth, guide: canvasWidth / 2 }, // Center of canvas
-      { pos: canvasWidth - width, guide: canvasWidth }, // Right edge of canvas
-    ];
+    if (!isNested) {
+      vSnapPoints.push({ pos: canvasWidth / 2 - halfWidth, guide: canvasWidth / 2 }); // Artboard center
+      vSnapPoints.push({ pos: canvasWidth - width, guide: canvasWidth }); // Right Artboard edge
+    }
 
     // Other elements vertical edges and centers
     elements.forEach((el) => {
       if (el.id === currentId) return;
 
-      const elX = el.x;
-      const elWidth = typeof el.width === 'number' ? el.width : parseFloat(el.width);
+      const elX = Number(el.x);
+      const elWidth = Number(el.width);
+      if (isNaN(elX) || isNaN(elWidth)) return;
+
       const elRight = elX + elWidth;
       const elCenterX = elX + elWidth / 2;
 
@@ -64,27 +71,42 @@ export const useMagneticGuidelines = () => {
       vSnapPoints.push({ pos: elCenterX - halfWidth, guide: elCenterX });
     });
 
-    // Check X snapping
+    // Check X - Encontrar o ponto de snap mais próximo
+    let closestV: { pos: number; guide: number; dist: number } | null = null;
     for (const point of vSnapPoints) {
-      if (Math.abs(x - point.pos) < threshold) {
-        snappedX = point.pos;
-        guides.push({ axis: 'x', position: point.guide });
-        break;
+      const dist = Math.abs(x - point.pos);
+      if (dist < threshold) {
+        if (!closestV || dist < closestV.dist) {
+          closestV = { ...point, dist };
+        }
       }
     }
 
-    // --- Horizontal Guides (Snap Y) ---
-    const hSnapPoints = [
-      { pos: 0, guide: 0 }, // Top edge of canvas
-      { pos: canvasHeight / 2 - halfHeight, guide: canvasHeight / 2 }, // Center of canvas
-      { pos: canvasHeight - height, guide: canvasHeight }, // Bottom edge of canvas
-    ];
+    if (closestV) {
+      // Se for snap para 0, só ativa se já estivermos razoavelmente perto (evita saltos do nada)
+      if (closestV.pos === 0 && Math.abs(x) > threshold * 1.5) {
+        // Não snap para o zero se o movimento foi grande demais para ele (provável glitch)
+      } else {
+        snappedX = closestV.pos;
+        guides.push({ axis: 'x', position: closestV.guide });
+      }
+    }
+
+    // --- Pontos de Snap Horizontais (Y) ---
+    const hSnapPoints: { pos: number; guide: number }[] = [];
+
+    if (!isNested) {
+      hSnapPoints.push({ pos: canvasHeight / 2 - halfHeight, guide: canvasHeight / 2 });
+      hSnapPoints.push({ pos: canvasHeight - height, guide: canvasHeight });
+    }
 
     elements.forEach((el) => {
       if (el.id === currentId) return;
 
-      const elY = el.y;
-      const elHeight = typeof el.height === 'number' ? el.height : parseFloat(el.height);
+      const elY = Number(el.y);
+      const elHeight = Number(el.height);
+      if (isNaN(elY) || isNaN(elHeight)) return;
+
       const elBottom = elY + elHeight;
       const elCenterY = elY + elHeight / 2;
 
@@ -100,16 +122,32 @@ export const useMagneticGuidelines = () => {
       hSnapPoints.push({ pos: elCenterY - halfHeight, guide: elCenterY });
     });
 
-    // Check Y snapping
+    // Check Y - Encontrar o ponto de snap mais próximo
+    let closestH: { pos: number; guide: number; dist: number } | null = null;
     for (const point of hSnapPoints) {
-      if (Math.abs(y - point.pos) < threshold) {
-        snappedY = point.pos;
-        guides.push({ axis: 'y', position: point.guide });
-        break;
+      const dist = Math.abs(y - point.pos);
+      if (dist < threshold) {
+        if (!closestH || dist < closestH.dist) {
+          closestH = { ...point, dist };
+        }
       }
     }
 
-    return { x: snappedX, y: snappedY, guides };
+    if (closestH) {
+      if (closestH.pos === 0 && Math.abs(y) > threshold * 1.5) {
+        // Ignora
+      } else {
+        snappedY = closestH.pos;
+        guides.push({ axis: 'y', position: closestH.guide });
+      }
+    }
+
+    // Final safety check: if for some reason snappedX/Y are NaN, use input as fallback
+    return { 
+      x: isNaN(snappedX) ? Number(x) || 0 : snappedX, 
+      y: isNaN(snappedY) ? Number(y) || 0 : snappedY, 
+      guides 
+    };
   };
 
   return { calculateSnapping };

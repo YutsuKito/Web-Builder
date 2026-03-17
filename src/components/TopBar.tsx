@@ -1,15 +1,50 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useStore } from 'zustand';
 import { useEditorStore } from '../store/useEditorStore';
+import { upsertProjectAction } from '@/app/actions/projectActions';
+import { Save, Loader2 } from 'lucide-react';
 
 export function TopBar() {
-  const { viewport, setViewport, showBrowserFrame, toggleBrowserFrame } = useEditorStore();
+  const { 
+    viewport, 
+    setViewport, 
+    showBrowserFrame, 
+    toggleBrowserFrame, 
+    elementos, 
+    projectId, 
+    projectName,
+    setProjectName 
+  } = useEditorStore();
+  
   const { undo, redo, pastStates, futureStates } = useStore(useEditorStore.temporal, (state) => state);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const result = await upsertProjectAction({
+        id: projectId,
+        name: projectName,
+        canvasState: { elementos }
+      });
+
+      if (result.success) {
+        // Projeto salvo com sucesso
+      } else {
+        alert('Erro ao salvar projeto');
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      alert('Erro crítico ao salvar');
+    } finally {
+      setTimeout(() => setSaving(false), 500);
+    }
+  }
 
   return (
     <div className="flex bg-white border-b border-gray-200 h-14 items-center px-6 shrink-0 justify-between">
       {/* Undo/Redo Controls */}
-      <div className="flex-1 flex gap-2">
+      <div className="flex-1 flex gap-2 items-center">
         <button
           onClick={() => undo()}
           disabled={pastStates.length === 0}
@@ -36,10 +71,32 @@ export function TopBar() {
             <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
           </svg>
         </button>
-      </div>
 
+        <div className="h-4 w-[1px] bg-gray-200 mx-2" />
+
+        <input
+          type="text"
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          className="bg-transparent border-none text-sm font-semibold text-slate-700 focus:ring-0 w-32 lg:w-48 placeholder-slate-400"
+          placeholder="Nome do Projeto"
+        />
+
+        <div className="h-4 w-[1px] bg-gray-200 mx-2" />
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+      </div>
+      
       {/* Viewport Controls */}
       <div className="flex space-x-2 justify-center">
+        {/* ... (restando do código de botões de viewport) */}
         <button
           onClick={() => setViewport('desktop')}
           className={`p-2 rounded-md transition-colors ${

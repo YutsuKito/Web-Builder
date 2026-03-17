@@ -2,14 +2,20 @@
 
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
-import type { Componente } from '@/core/domain/Componente';
-import { getValidStyles } from '@/utils/styleHelpers';
+import type { Componente } from '../../core/domain/Componente';
+import { getValidStyles, getComputedStyles } from '../../utils/styleHelpers';
+import { useEditorStore } from '../../store/useEditorStore';
 
 interface IconElementProps {
   elemento: Componente;
 }
 
 export default function IconElement({ elemento }: IconElementProps) {
+  const { viewport } = useEditorStore();
+  const estilos = (elemento as any).estilos || {};
+  const computedStyles = getComputedStyles(estilos, viewport);
+
+
   // O nome do ícone está armazenado no conteúdoTextual
   const iconName = (elemento.conteudoTextual || 'Circle') as keyof typeof LucideIcons;
   
@@ -17,13 +23,14 @@ export default function IconElement({ elemento }: IconElementProps) {
   const IconComponent = (LucideIcons[iconName] as React.ElementType) || LucideIcons.Circle;
 
   // O tamanho vem do estilos.fontSize (slider) ou largura/altura
-  const size = parseInt(String(elemento.estilos.fontSize || '48')) || 48;
-  const color = elemento.estilos.color || '#000000';
+  const size = parseInt(String(computedStyles.fontSize || '48')) || 48;
+  const color = computedStyles.color || '#000000';
+
 
   return (
     <div
       style={{
-        ...getValidStyles(elemento.estilos),
+        ...getValidStyles(computedStyles),
         width: '100%',
         height: '100%',
         display: 'flex',
@@ -31,6 +38,7 @@ export default function IconElement({ elemento }: IconElementProps) {
         justifyContent: 'center',
         cursor: elemento.link ? 'pointer' : 'default'
       }}
+
       className="overflow-hidden"
     >
       <IconComponent 
