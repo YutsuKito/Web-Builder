@@ -74,6 +74,12 @@ O projeto segue uma versão adaptada da **Clean Architecture**, dividindo respon
 - `src/core/infra`: Implementações de infraestrutura (DB, API).
 - `src/app` & `src/components`: Camada de apresentação (UI).
 
+## 🔎 Análise e roadmap de melhorias
+
+Foi adicionada uma análise técnica completa do estado atual do projeto, com prioridades e sugestões de evolução:
+
+- [`ANALISE_MELHORIAS.md`](./ANALISE_MELHORIAS.md)
+
 ## 📄 Licença
 
 Este projeto é privado. Consulte os proprietários para termos de uso.
